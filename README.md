@@ -4,4 +4,4 @@ Starter repository for c++ projects using this [`gui library`](https://github.co
 
 ## Usage 
 
-Clone this repository, it compiles using cmake.# starter
+Clone this repository, it compiles using cmake.
