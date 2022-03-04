@@ -79,7 +79,7 @@ Time Clock::get_current_time() {
     // https://forums.ni.com/t5/NI-Linux-Real-Time-Discussions/Help-to-solve-a-problem-with-C-on-cRIO-9068/td-p/3469892
     timespec time;
     clock_gettime(CLOCK_MONOTONIC_RAW, &time);
-    return mahi::util::microseconds(static_cast<uint64>(time.tv_sec) * 1000000 + time.tv_nsec / 1000);
+    return util::microseconds(static_cast<uint64>(time.tv_sec) * 1000000 + time.tv_nsec / 1000);
 }
 
 #endif

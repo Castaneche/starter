@@ -62,7 +62,7 @@ private:
         file_.close();
 
         std::string lastFileName = build_file_name(last_file_number_);
-        mahi::util::File::unlink(lastFileName.c_str());
+        util::File::unlink(lastFileName.c_str());
 
         for (int fileNumber = last_file_number_ - 1; fileNumber >= 0;--fileNumber) {
             std::string currentFileName = build_file_name(fileNumber);

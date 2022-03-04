@@ -65,6 +65,12 @@ set(IMGUI_HEADERS
     3rdparty/imgui/imgui_stdlib.h
 )
 
+if(WIN32)
+    set(IMGUI_SRC_WIN
+    	3rdparty/imgui/backends/imgui_impl_win32.cpp
+	    3rdparty/imgui/backends/imgui_impl_win32.h)
+endif()
+
 set(IMGUI_SRC
     3rdparty/imgui/imgui_demo.cpp
     3rdparty/imgui/imgui_draw.cpp
@@ -76,8 +82,7 @@ set(IMGUI_SRC
     3rdparty/imgui/backends/imgui_impl_glfw.h
     3rdparty/imgui/backends/imgui_impl_opengl3.cpp
     3rdparty/imgui/backends/imgui_impl_opengl3.h
-	3rdparty/imgui/backends/imgui_impl_win32.cpp
-	3rdparty/imgui/backends/imgui_impl_win32.h
+    ${IMGUI_SRC_WIN}
 )
 set(IMGUI_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/imgui)
 

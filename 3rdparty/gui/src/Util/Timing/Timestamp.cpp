@@ -45,7 +45,7 @@ Timestamp::Timestamp() {
     timeval tv;
     ::gettimeofday(&tv, NULL);
     tm t;
-    mahi::util::localtime_s(&t, &tv.tv_sec);
+    util::localtime_s(&t, &tv.tv_sec);
     year     = t.tm_year + 1900;
     month    = t.tm_mon + 1;
     yday     = t.tm_yday + 1;
