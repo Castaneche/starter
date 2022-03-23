@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 Win32 - www.glfw.org
+// GLFW 3.3 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2019 Camilla Löwy <elmindreda@glfw.org>
@@ -454,8 +454,11 @@ static void acquireMonitor(_GLFWwindow* window)
 
         // HACK: When mouse trails are enabled the cursor becomes invisible when
         //       the OpenGL ICD switches to page flipping
-        SystemParametersInfo(SPI_GETMOUSETRAILS, 0, &_glfw.win32.mouseTrailSize, 0);
-        SystemParametersInfo(SPI_SETMOUSETRAILS, 0, 0, 0);
+        if (IsWindowsXPOrGreater())
+        {
+            SystemParametersInfo(SPI_GETMOUSETRAILS, 0, &_glfw.win32.mouseTrailSize, 0);
+            SystemParametersInfo(SPI_SETMOUSETRAILS, 0, 0, 0);
+        }
     }
 
     if (!window->monitor->window)
@@ -478,7 +481,8 @@ static void releaseMonitor(_GLFWwindow* window)
         SetThreadExecutionState(ES_CONTINUOUS);
 
         // HACK: Restore mouse trail length saved in acquireMonitor
-        SystemParametersInfo(SPI_SETMOUSETRAILS, _glfw.win32.mouseTrailSize, 0, 0);
+        if (IsWindowsXPOrGreater())
+            SystemParametersInfo(SPI_SETMOUSETRAILS, _glfw.win32.mouseTrailSize, 0, 0);
     }
 
     _glfwInputMonitorWindow(window->monitor, NULL);
@@ -501,7 +505,17 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
             case WM_NCCREATE:
             {
                 if (_glfwIsWindows10AnniversaryUpdateOrGreaterWin32())
-                    EnableNonClientDpiScaling(hWnd);
+                {
+                    const CREATESTRUCTW* cs = (const CREATESTRUCTW*) lParam;
+                    const _GLFWwndconfig* wndconfig = cs->lpCreateParams;
+
+                    // On per-monitor DPI aware V1 systems, only enable
+                    // non-client scaling for windows that scale the client area
+                    // We need WM_GETDPISCALEDSIZE from V2 to keep the client
+                    // area static when the non-client area is scaled
+                    if (wndconfig && wndconfig->scaleToMonitor)
+                        EnableNonClientDpiScaling(hWnd);
+                }
 
                 break;
             }
@@ -512,9 +526,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
 
             case WM_DEVICECHANGE:
             {
-                if (!_glfw.joysticksInitialized)
-                    break;
-
                 if (wParam == DBT_DEVICEARRIVAL)
                 {
                     DEV_BROADCAST_HDR* dbh = (DEV_BROADCAST_HDR*) lParam;
@@ -611,12 +622,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
 
                 // User trying to access application menu using ALT?
                 case SC_KEYMENU:
-                {
-                    if (!window->win32.keymenu)
-                        return 0;
-
-                    break;
-                }
+                    return 0;
             }
             break;
         }
@@ -657,9 +663,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
                 window->win32.highSurrogate = 0;
                 _glfwInputChar(window, codepoint, getKeyMods(), uMsg != WM_SYSCHAR);
             }
-
-            if (uMsg == WM_SYSCHAR && window->win32.keymenu)
-                break;
 
             return 0;
         }
@@ -1138,9 +1141,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
             const float xscale = HIWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
             const float yscale = LOWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
 
-            // Only apply the suggested size if the OS is new enough to have
-            // sent a WM_GETDPISCALEDSIZE before this
-            if (_glfwIsWindows10CreatorsUpdateOrGreaterWin32())
+            // Resize windowed mode windows that either permit rescaling or that
+            // need it to compensate for non-client area scaling
+            if (!window->monitor &&
+                (window->win32.scaleToMonitor ||
+                 _glfwIsWindows10CreatorsUpdateOrGreaterWin32()))
             {
                 RECT* suggested = (RECT*) lParam;
                 SetWindowPos(window->win32.handle, HWND_TOP,
@@ -1255,7 +1260,7 @@ static int createNativeWindow(_GLFWwindow* window,
                                            NULL, // No parent window
                                            NULL, // No window menu
                                            GetModuleHandleW(NULL),
-                                           NULL);
+                                           (LPVOID) wndconfig);
 
     free(wideTitle);
 
@@ -1279,7 +1284,6 @@ static int createNativeWindow(_GLFWwindow* window,
     }
 
     window->win32.scaleToMonitor = wndconfig->scaleToMonitor;
-    window->win32.keymenu = wndconfig->win32.keymenu;
 
     // Adjust window rect to account for DPI scaling of the window frame and
     // (if enabled) DPI scaling of the content area
@@ -1293,8 +1297,12 @@ static int createNativeWindow(_GLFWwindow* window,
         {
             float xscale, yscale;
             _glfwPlatformGetWindowContentScale(window, &xscale, &yscale);
-            rect.right = (int) (rect.right * xscale);
-            rect.bottom = (int) (rect.bottom * yscale);
+
+            if (xscale > 0.f && yscale > 0.f)
+            {
+                rect.right = (int) (rect.right * xscale);
+                rect.bottom = (int) (rect.bottom * yscale);
+            }
         }
 
         ClientToScreen(window->win32.handle, (POINT*) &rect.left);
@@ -1868,36 +1876,6 @@ void _glfwPlatformSetWindowFloating(_GLFWwindow* window, GLFWbool enabled)
                  SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
 }
 
-void _glfwPlatformSetWindowMousePassthrough(_GLFWwindow* window, GLFWbool enabled)
-{
-    COLORREF key = 0;
-    BYTE alpha = 0;
-    DWORD flags = 0;
-    DWORD exStyle = GetWindowLongW(window->win32.handle, GWL_EXSTYLE);
-
-    if (exStyle & WS_EX_LAYERED)
-        GetLayeredWindowAttributes(window->win32.handle, &key, &alpha, &flags);
-
-    if (enabled)
-        exStyle |= (WS_EX_TRANSPARENT | WS_EX_LAYERED);
-    else
-    {
-        exStyle &= ~WS_EX_TRANSPARENT;
-        // NOTE: Window opacity also needs the layered window style so do not
-        //       remove it if the window is alpha blended
-        if (exStyle & WS_EX_LAYERED)
-        {
-            if (!(flags & LWA_ALPHA))
-                exStyle &= ~WS_EX_LAYERED;
-        }
-    }
-
-    SetWindowLongW(window->win32.handle, GWL_EXSTYLE, exStyle);
-
-    if (enabled)
-        SetLayeredWindowAttributes(window->win32.handle, key, alpha, flags);
-}
-
 float _glfwPlatformGetWindowOpacity(_GLFWwindow* window)
 {
     BYTE alpha;
@@ -1915,22 +1893,19 @@ float _glfwPlatformGetWindowOpacity(_GLFWwindow* window)
 
 void _glfwPlatformSetWindowOpacity(_GLFWwindow* window, float opacity)
 {
-    LONG exStyle = GetWindowLongW(window->win32.handle, GWL_EXSTYLE);
-    if (opacity < 1.f || (exStyle & WS_EX_TRANSPARENT))
+    if (opacity < 1.f)
     {
         const BYTE alpha = (BYTE) (255 * opacity);
-        exStyle |= WS_EX_LAYERED;
-        SetWindowLongW(window->win32.handle, GWL_EXSTYLE, exStyle);
+        DWORD style = GetWindowLongW(window->win32.handle, GWL_EXSTYLE);
+        style |= WS_EX_LAYERED;
+        SetWindowLongW(window->win32.handle, GWL_EXSTYLE, style);
         SetLayeredWindowAttributes(window->win32.handle, 0, alpha, LWA_ALPHA);
-    }
-    else if (exStyle & WS_EX_TRANSPARENT)
-    {
-        SetLayeredWindowAttributes(window->win32.handle, 0, 0, 0);
     }
     else
     {
-        exStyle &= ~WS_EX_LAYERED;
-        SetWindowLongW(window->win32.handle, GWL_EXSTYLE, exStyle);
+        DWORD style = GetWindowLongW(window->win32.handle, GWL_EXSTYLE);
+        style &= ~WS_EX_LAYERED;
+        SetWindowLongW(window->win32.handle, GWL_EXSTYLE, style);
     }
 }
 
@@ -2096,7 +2071,7 @@ const char* _glfwPlatformGetScancodeName(int scancode)
     if (scancode < 0 || scancode > (KF_EXTENDED | 0xff) ||
         _glfw.win32.keycodes[scancode] == GLFW_KEY_UNKNOWN)
     {
-        _glfwInputError(GLFW_INVALID_VALUE, "Invalid scancode");
+        _glfwInputError(GLFW_INVALID_VALUE, "Invalid scancode %i", scancode);
         return NULL;
     }
 
@@ -2129,25 +2104,14 @@ int _glfwPlatformCreateStandardCursor(_GLFWcursor* cursor, int shape)
         id = OCR_IBEAM;
     else if (shape == GLFW_CROSSHAIR_CURSOR)
         id = OCR_CROSS;
-    else if (shape == GLFW_POINTING_HAND_CURSOR)
+    else if (shape == GLFW_HAND_CURSOR)
         id = OCR_HAND;
-    else if (shape == GLFW_RESIZE_EW_CURSOR)
+    else if (shape == GLFW_HRESIZE_CURSOR)
         id = OCR_SIZEWE;
-    else if (shape == GLFW_RESIZE_NS_CURSOR)
+    else if (shape == GLFW_VRESIZE_CURSOR)
         id = OCR_SIZENS;
-    else if (shape == GLFW_RESIZE_NWSE_CURSOR)
-        id = OCR_SIZENWSE;
-    else if (shape == GLFW_RESIZE_NESW_CURSOR)
-        id = OCR_SIZENESW;
-    else if (shape == GLFW_RESIZE_ALL_CURSOR)
-        id = OCR_SIZEALL;
-    else if (shape == GLFW_NOT_ALLOWED_CURSOR)
-        id = OCR_NO;
     else
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Unknown standard cursor");
         return GLFW_FALSE;
-    }
 
     cursor->win32.handle = LoadImageW(NULL,
                                       MAKEINTRESOURCEW(id), IMAGE_CURSOR, 0, 0,
@@ -2254,57 +2218,6 @@ const char* _glfwPlatformGetClipboardString(void)
     CloseClipboard();
 
     return _glfw.win32.clipboardString;
-}
-
-EGLenum _glfwPlatformGetEGLPlatform(EGLint** attribs)
-{
-    if (_glfw.egl.ANGLE_platform_angle)
-    {
-        int type = 0;
-
-        if (_glfw.egl.ANGLE_platform_angle_opengl)
-        {
-            if (_glfw.hints.init.angleType == GLFW_ANGLE_PLATFORM_TYPE_OPENGL)
-                type = EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE;
-            else if (_glfw.hints.init.angleType == GLFW_ANGLE_PLATFORM_TYPE_OPENGLES)
-                type = EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE;
-        }
-
-        if (_glfw.egl.ANGLE_platform_angle_d3d)
-        {
-            if (_glfw.hints.init.angleType == GLFW_ANGLE_PLATFORM_TYPE_D3D9)
-                type = EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE;
-            else if (_glfw.hints.init.angleType == GLFW_ANGLE_PLATFORM_TYPE_D3D11)
-                type = EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE;
-        }
-
-        if (_glfw.egl.ANGLE_platform_angle_vulkan)
-        {
-            if (_glfw.hints.init.angleType == GLFW_ANGLE_PLATFORM_TYPE_VULKAN)
-                type = EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE;
-        }
-
-        if (type)
-        {
-            *attribs = calloc(3, sizeof(EGLint));
-            (*attribs)[0] = EGL_PLATFORM_ANGLE_TYPE_ANGLE;
-            (*attribs)[1] = type;
-            (*attribs)[2] = EGL_NONE;
-            return EGL_PLATFORM_ANGLE_ANGLE;
-        }
-    }
-
-    return 0;
-}
-
-EGLNativeDisplayType _glfwPlatformGetEGLNativeDisplay(void)
-{
-    return GetDC(_glfw.win32.helperWindowHandle);
-}
-
-EGLNativeWindowType _glfwPlatformGetEGLNativeWindow(_GLFWwindow* window)
-{
-    return window->win32.handle;
 }
 
 void _glfwPlatformGetRequiredInstanceExtensions(char** extensions)

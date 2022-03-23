@@ -9,8 +9,6 @@
 
 #include <Util/Concurrency/Lock.hpp>
 #include <Util/Concurrency/Mutex.hpp>
-#include <Util/Concurrency/NamedMutex.hpp>
-#include <Util/Concurrency/Spinlock.hpp>
 
 #include <Util/Logging/Csv.hpp>
 #include <Util/Logging/Log.hpp>

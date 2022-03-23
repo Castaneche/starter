@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 - www.glfw.org
+// GLFW 3.3 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2018 Camilla Löwy <elmindreda@glfw.org>
@@ -28,7 +28,6 @@
 //========================================================================
 
 #include "internal.h"
-#include "mappings.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -37,23 +36,21 @@
 #include <assert.h>
 
 
-// The global variables below comprise all mutable global data in GLFW
-//
-// Any other global variable is a bug
+// NOTE: The global variables below comprise all mutable global data in GLFW
+//       Any other mutable global variable is a bug
 
-// Global state shared between compilation units of GLFW
+// This contains all mutable state shared between compilation units of GLFW
 //
 _GLFWlibrary _glfw = { GLFW_FALSE };
 
 // These are outside of _glfw so they can be used before initialization and
-// after termination
+// after termination without special handling when _glfw is cleared to zero
 //
 static _GLFWerror _glfwMainThreadError;
 static GLFWerrorfun _glfwErrorCallback;
 static _GLFWinitconfig _glfwInitHints =
 {
     GLFW_TRUE,      // hat buttons
-    GLFW_ANGLE_PLATFORM_TYPE_NONE, // ANGLE backend
     {
         GLFW_TRUE,  // macOS menu bar
         GLFW_TRUE   // macOS bundle chdir
@@ -91,7 +88,6 @@ static void terminate(void)
     _glfw.mappingCount = 0;
 
     _glfwTerminateVulkan();
-    _glfwPlatformTerminateJoysticks();
     _glfwPlatformTerminate();
 
     _glfw.initialized = GLFW_FALSE;
@@ -191,12 +187,6 @@ void _glfwInputError(int code, const char* format, ...)
             strcpy(description, "The requested format is unavailable");
         else if (code == GLFW_NO_WINDOW_CONTEXT)
             strcpy(description, "The specified window has no context");
-        else if (code == GLFW_CURSOR_UNAVAILABLE)
-            strcpy(description, "The specified cursor shape is unavailable");
-        else if (code == GLFW_FEATURE_UNAVAILABLE)
-            strcpy(description, "The requested feature cannot be implemented for this platform");
-        else if (code == GLFW_FEATURE_UNIMPLEMENTED)
-            strcpy(description, "The requested feature has not yet been implemented for this platform");
         else
             strcpy(description, "ERROR: UNKNOWN GLFW ERROR");
     }
@@ -253,24 +243,12 @@ GLFWAPI int glfwInit(void)
 
     _glfwPlatformSetTls(&_glfw.errorSlot, &_glfwMainThreadError);
 
+    _glfwInitGamepadMappings();
+
     _glfw.initialized = GLFW_TRUE;
     _glfw.timer.offset = _glfwPlatformGetTimerValue();
 
     glfwDefaultWindowHints();
-
-    {
-        int i;
-
-        for (i = 0;  _glfwDefaultMappings[i];  i++)
-        {
-            if (!glfwUpdateGamepadMappings(_glfwDefaultMappings[i]))
-            {
-                terminate();
-                return GLFW_FALSE;
-            }
-        }
-    }
-
     return GLFW_TRUE;
 }
 
@@ -288,9 +266,6 @@ GLFWAPI void glfwInitHint(int hint, int value)
     {
         case GLFW_JOYSTICK_HAT_BUTTONS:
             _glfwInitHints.hatButtons = value;
-            return;
-        case GLFW_ANGLE_PLATFORM_TYPE:
-            _glfwInitHints.angleType = value;
             return;
         case GLFW_COCOA_CHDIR_RESOURCES:
             _glfwInitHints.ns.chdir = value;

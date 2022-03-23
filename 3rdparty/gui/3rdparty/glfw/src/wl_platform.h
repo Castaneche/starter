@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 Wayland - www.glfw.org
+// GLFW 3.3 Wayland - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2014 Jonas Ådahl <jadahl@gmail.com>
 //
@@ -53,6 +53,8 @@ typedef VkBool32 (APIENTRY *PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR
 #include "null_joystick.h"
 #endif
 #include "xkb_unicode.h"
+#include "egl_context.h"
+#include "osmesa_context.h"
 
 #include "wayland-xdg-shell-client-protocol.h"
 #include "wayland-xdg-decoration-client-protocol.h"
@@ -64,6 +66,9 @@ typedef VkBool32 (APIENTRY *PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR
 #define _glfw_dlopen(name) dlopen(name, RTLD_LAZY | RTLD_LOCAL)
 #define _glfw_dlclose(handle) dlclose(handle)
 #define _glfw_dlsym(handle, name) dlsym(handle, name)
+
+#define _GLFW_EGL_NATIVE_WINDOW         ((EGLNativeWindowType) window->wl.native)
+#define _GLFW_EGL_NATIVE_DISPLAY        ((EGLNativeDisplayType) _glfw.wl.display)
 
 #define _GLFW_PLATFORM_WINDOW_STATE         _GLFWwindowWayland  wl
 #define _GLFW_PLATFORM_LIBRARY_WINDOW_STATE _GLFWlibraryWayland wl
@@ -153,7 +158,6 @@ typedef enum _GLFWdecorationSideWayland
     leftDecoration,
     rightDecoration,
     bottomDecoration,
-
 } _GLFWdecorationSideWayland;
 
 typedef struct _GLFWdecorationWayland
@@ -161,7 +165,6 @@ typedef struct _GLFWdecorationWayland
     struct wl_surface*          surface;
     struct wl_subsurface*       subsurface;
     struct wp_viewport*         viewport;
-
 } _GLFWdecorationWayland;
 
 // Wayland-specific per-window data
@@ -175,6 +178,7 @@ typedef struct _GLFWwindowWayland
     GLFWbool                    transparent;
     struct wl_surface*          surface;
     struct wl_egl_window*       native;
+    struct wl_shell_surface*    shellSurface;
     struct wl_callback*         callback;
 
     struct {
@@ -210,7 +214,6 @@ typedef struct _GLFWwindowWayland
         _GLFWdecorationWayland             top, left, right, bottom;
         int                                focus;
     } decorations;
-
 } _GLFWwindowWayland;
 
 // Wayland-specific global data
@@ -221,6 +224,7 @@ typedef struct _GLFWlibraryWayland
     struct wl_registry*         registry;
     struct wl_compositor*       compositor;
     struct wl_subcompositor*    subcompositor;
+    struct wl_shell*            shell;
     struct wl_shm*              shm;
     struct wl_seat*             seat;
     struct wl_pointer*          pointer;
@@ -245,6 +249,7 @@ typedef struct _GLFWlibraryWayland
     const char*                 cursorPreviousName;
     int                         cursorTimerfd;
     uint32_t                    serial;
+    uint32_t                    pointerEnterSerial;
 
     int32_t                     keyboardRepeatRate;
     int32_t                     keyboardRepeatDelay;
@@ -318,7 +323,6 @@ typedef struct _GLFWlibraryWayland
         PFN_wl_egl_window_destroy window_destroy;
         PFN_wl_egl_window_resize window_resize;
     } egl;
-
 } _GLFWlibraryWayland;
 
 // Wayland-specific per-monitor data
@@ -332,7 +336,6 @@ typedef struct _GLFWmonitorWayland
     int                         x;
     int                         y;
     int                         scale;
-
 } _GLFWmonitorWayland;
 
 // Wayland-specific per-cursor data

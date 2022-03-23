@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 OSMesa - www.glfw.org
+// GLFW 3.3 OSMesa - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2016 Google Inc.
 // Copyright (c) 2016-2017 Camilla Löwy <elmindreda@glfw.org>
@@ -302,6 +302,12 @@ GLFWAPI int glfwGetOSMesaColorBuffer(GLFWwindow* handle, int* width,
 
     _GLFW_REQUIRE_INIT_OR_RETURN(GLFW_FALSE);
 
+    if (window->context.source != GLFW_OSMESA_CONTEXT_API)
+    {
+        _glfwInputError(GLFW_NO_WINDOW_CONTEXT, NULL);
+        return GLFW_FALSE;
+    }
+
     if (!OSMesaGetColorBuffer(window->context.osmesa.handle,
                               &mesaWidth, &mesaHeight,
                               &mesaFormat, &mesaBuffer))
@@ -335,6 +341,12 @@ GLFWAPI int glfwGetOSMesaDepthBuffer(GLFWwindow* handle,
 
     _GLFW_REQUIRE_INIT_OR_RETURN(GLFW_FALSE);
 
+    if (window->context.source != GLFW_OSMESA_CONTEXT_API)
+    {
+        _glfwInputError(GLFW_NO_WINDOW_CONTEXT, NULL);
+        return GLFW_FALSE;
+    }
+
     if (!OSMesaGetDepthBuffer(window->context.osmesa.handle,
                               &mesaWidth, &mesaHeight,
                               &mesaBytes, &mesaBuffer))
@@ -361,7 +373,7 @@ GLFWAPI OSMesaContext glfwGetOSMesaContext(GLFWwindow* handle)
     _GLFWwindow* window = (_GLFWwindow*) handle;
     _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
 
-    if (window->context.client == GLFW_NO_API)
+    if (window->context.source != GLFW_OSMESA_CONTEXT_API)
     {
         _glfwInputError(GLFW_NO_WINDOW_CONTEXT, NULL);
         return NULL;

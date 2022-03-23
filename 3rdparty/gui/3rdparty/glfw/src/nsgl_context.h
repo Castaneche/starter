@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 macOS - www.glfw.org
+// GLFW 3.3 macOS - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2009-2019 Camilla Löwy <elmindreda@glfw.org>
 //
@@ -44,7 +44,6 @@ typedef struct _GLFWcontextNSGL
 {
     id                pixelFormat;
     id                object;
-
 } _GLFWcontextNSGL;
 
 // NSGL-specific global data
@@ -53,7 +52,6 @@ typedef struct _GLFWlibraryNSGL
 {
     // dlopen handle for OpenGL.framework (for glfwGetProcAddress)
     CFBundleRef     framework;
-
 } _GLFWlibraryNSGL;
 
 

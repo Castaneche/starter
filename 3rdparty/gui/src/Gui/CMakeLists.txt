@@ -2,6 +2,7 @@ target_sources(gui
     PRIVATE
     Application.cpp
     Color.cpp
+    imgui_custom.cpp
 )
 
 if(GUI_NATIVE_DIAGS)
